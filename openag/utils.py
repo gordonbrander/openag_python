@@ -2,6 +2,9 @@ from openag.categories import SENSORS, ACTUATORS
 
 __all__ = ["synthesize_firmware_module_info"]
 
+def index_by_key(list_of_dicts, key):
+    return dict((x[key], x) for x in list_of_dicts)
+
 def synthesize_firmware_module_info(modules, module_types):
     """
     Modules are allowed to define attributes on their inputs and outputs that

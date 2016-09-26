@@ -236,14 +236,21 @@ def run(
         subprocess.call(["platformio", "lib", "install", str(dep)])
     lib_dir = os.path.join(project_dir, "lib")
     for dep in codegen.all_git_dependencies():
-        dep_folder_name = dep.split("/")[-1].split(".")[0]
+        dep_folder_name = dep['url'].split("/")[-1].split(".")[0]
         dep_folder = os.path.join(lib_dir, dep_folder_name)
         if os.path.isdir(dep_folder):
             click.echo('Updating "{}"'.format(dep_folder_name))
             subprocess.call(["git", "pull"], cwd=dep_folder)
         else:
             click.echo('Downloading "{}"'.format(dep_folder_name))
-            subprocess.call(["git", "clone", dep], cwd=lib_dir)
+            # Get specified tag, branch, or default to master
+            if dep.get('tag'):
+                tree = dep['tag']
+            elif dep.get('branch'):
+                tree = dep['branch']
+            else:
+                tree = 'master'
+            subprocess.call(["git", "clone", "-b", tree, dep['url']], cwd=lib_dir)
     with open(src_file_path, "w+") as f:
         codegen.write_to(f)
 

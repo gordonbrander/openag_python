@@ -1,6 +1,7 @@
 __all__ = ["Plugin", "CodeGen"]
 
 import itertools
+from openag.utils import index_by_key
 
 def FlowManager(start_string, end_string):
     """
@@ -124,10 +125,20 @@ class Plugin:
 
     def git_dependencies(self):
         """
-        Should return a set of URLs of git repositories containing code
-        required by this plugin
+        Should return a list of git dependency objects pointing to code
+        required by this plugin. Values are dictionaries containing url, type,
+        and (optional) branch or tag fields:
+
+            {
+                'foo.com/x.git': {
+                    'url': 'foo.com/x.git',
+                    'type': 'git',
+                    # 'branch': 'foo'
+                    # 'tag': 'bar'
+                }
+            }
         """
-        return set()
+        return []
 
     def header_files(self):
         """
@@ -237,16 +248,28 @@ class CodeGen(Plugin):
         return deps
 
     def all_git_dependencies(self):
-        deps = set()
+        '''
+        Return a list of all git dependencies.
+        Each dependency is a dict containing a url, type and (optional) branch
+        and tag field:
+
+            [{'url', 'type', 'branch'?, 'tag'?}]
+        '''
+        deps = []
         for plugin in self.plugins:
-            deps = deps.union(plugin.git_dependencies())
+            deps = deps + plugin.git_dependencies()
         for mod_info in self.modules.values():
-            if mod_info.get("repository", {}).get("type", None) == "git":
-                deps.add(mod_info["repository"]["url"])
+            repo_dep = mod_info.get("repository", {})
+            if repo_dep.get("type", None) == "git":
+                deps.append(repo_dep)
             for mod_dep in mod_info.get("dependencies", []):
-                if mod_dep["type"] == "git":
-                    deps.add(mod_dep["url"])
-        return deps
+                if mod_dep.get("type", None) == "git":
+                    deps.append(mod_dep)
+        # De-dupe by indexing each dependency by url. Then read de-duped values
+        # as list.
+        # @TODO in future, we should support same repo at multiple revisions.
+        unique_deps = index_by_key(deps, 'url').values()
+        return unique_deps
 
     def write_to(self, f):
         """
