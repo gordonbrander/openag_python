@@ -109,8 +109,9 @@ def run(
     # Get the list of module types
     # Read from the local couchdb server
     local_server = config["local_server"]["url"]
-    firmware_types_db = (load_module_types_from_db(Server(local_server))) \
-        if local_server else ()
+    server = Server(local_server) if local_server else None
+    firmware_types_db = (load_module_types_from_db(server)) \
+        if server else ()
     # Check for working modules in the lib folder
     # Do this second so project-local values overwrite values from the server
     lib_path = os.path.join(project_dir, "lib")
@@ -128,7 +129,7 @@ def run(
                 "Parsing firmware module \"{}\" from modules file".format(_id)
             )
             modules[_id] = FirmwareModule(info)
-    elif local_server:
+    elif server:
         db = server[FIRMWARE_MODULE]
         for _id in db:
             if _id.startswith("_"):
