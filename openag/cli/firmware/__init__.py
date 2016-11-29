@@ -42,9 +42,14 @@ def codegen_options(f):
         "be enabled"
     )(f)
     f = click.option(
-        "-f", "--modules_file", type=click.File(),
-        help="JSON file describing the modules to include in the generated "
+        "-f", "--fixture_file", type=click.File(),
+        help="JSON file describing modules and module types"
         "code"
+    )(f)
+    f = click.option(
+        "-m", "--modules_file", type=click.File(),
+        help="JSON file describing the modules to include in the generated "
+        "code. Used for troubleshooting and debugging."
     )(f)
     f = click.option(
         "-p", "--plugin", multiple=True, help="Enable a specific plugin"
@@ -92,7 +97,7 @@ def init(board, project_dir, **kwargs):
 @project_dir_option
 @codegen_options
 def run(
-    categories, modules_file, project_dir, plugin, target,
+    categories, fixture_file, modules_file, project_dir, plugin, target,
     status_update_interval
 ):
     """ Generate code for this project and run it """
@@ -106,33 +111,41 @@ def run(
             "please use the `openag firmware init` command"
         )
 
-    # Get the list of module types
-    # Read from the local couchdb server
-    local_server = config["local_server"]["url"]
-    server = Server(local_server) if local_server else None
-    # Load firmware types from DB if server present.
-    # Capture generator (using parens)
-    firmware_types_db = (
-        load_firmware_types_from_db(server) if server else ()
-    )
-    # Check for working modules in the lib folder
-    # Do this second so project-local values overwrite values from the server
-    lib_path = os.path.join(project_dir, "lib")
-    firmware_types_lib = (load_firmware_types_from_module_json(lib_path))
-    # Chain module type generators and then index by _id to create a dictionary
-    # of module types.
-    module_types = index_by_id(chain(firmware_types_db, firmware_types_lib))
+    firmware_types = []
+    firmware = []
 
-    # Get the list of modules from DB, capturing generator
-    firmware_db = (load_firmware_from_db(server)) if server else ()
-    firmware_module_json = (
-        load_firmware_from_module_json(modules_file) if modules_file else ()
-    )
-    # Chain and collect generators so we can measure length of list
-    all_firmware = list(chain(firmware_db, firmware_module_json))
-    if len(all_firmware) is 0:
+    # Get firmware and firmware_types from fixture file (if passed)
+    if fixture_file:
+        fixture = json.load(fixture_file)
+        firmware_types.extend(
+            FirmwareModuleType(firmware_type)
+            for firmware_type in fixture[FIRMWARE_MODULE_TYPE]
+        )
+        firmware.extend(
+            FirmwareModule(firmware)
+            for firmware in fixture[FIRMWARE_MODULE]
+        )
+
+    # Get any firmware types from DB
+    local_server = config["local_server"]["url"]
+    if local_server:
+        server = Server(local_server)
+        firmware_types.extend(load_firmware_types_from_db(server))
+        firmware.extend(load_firmware_from_db(server))
+
+    # Check for working modules in the lib folder
+    # Do this last so project-local values overwrite values from the server
+    lib_path = os.path.join(project_dir, "lib")
+    firmware_types.extend(load_firmware_types_from_module_json(lib_path))
+    if modules_file:
+        firmware.extend(load_firmware_from_module_json(modules_file))
+
+    # Check if any modules were specified. We need at least one.
+    if len(firmware) is 0:
         raise click.ClickException("No modules specified for the project")
-    modules = index_by_id(all_firmware)
+
+    module_types = index_by_id(firmware_types)
+    modules = index_by_id(firmware)
     # Synthesize the module and module type dicts
     modules = synthesize_firmware_module_info(modules, module_types)
     # Update the module inputs and outputs using the categories
