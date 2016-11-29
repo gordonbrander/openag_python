@@ -110,36 +110,29 @@ def run(
     # Read from the local couchdb server
     local_server = config["local_server"]["url"]
     server = Server(local_server) if local_server else None
-    firmware_types_db = (load_module_types_from_db(server)) \
-        if server else ()
+    # Load firmware types from DB if server present.
+    # Capture generator (using parens)
+    firmware_types_db = (
+        load_firmware_types_from_db(server) if server else ()
+    )
     # Check for working modules in the lib folder
     # Do this second so project-local values overwrite values from the server
     lib_path = os.path.join(project_dir, "lib")
-    firmware_types_lib = (load_module_types_from_lib(lib_path))
+    firmware_types_lib = (load_firmware_types_from_lib(lib_path))
     # Chain module type generators and then index by _id to create a dictionary
     # of module types.
     module_types = index_by_id(chain(firmware_types_db, firmware_types_lib))
 
-    # Get the list of modules
-    modules = {}
-    if modules_file:
-        _modules = json.load(modules_file)
-        for _id, info in _modules.items():
-            click.echo(
-                "Parsing firmware module \"{}\" from modules file".format(_id)
-            )
-            modules[_id] = FirmwareModule(info)
-    elif server:
-        db = server[FIRMWARE_MODULE]
-        for _id in db:
-            if _id.startswith("_"):
-                continue
-            click.echo("Parsing firmware module \"{}\"".format(_id))
-            modules[_id] = FirmwareModule(db[_id])
-    else:
+    # Get the list of modules from DB, capturing generator
+    firmware_db = (load_firmware_from_db(server)) if server else ()
+    firmware_json = (
+        load_firmware_json(modules_file) if modules_file else ()
+    )
+    # Chain and collect generators so we can measure length of list
+    all_firmware = list(chain(firmware_db, firmware_json))
+    if len(all_firmware) is 0:
         raise click.ClickException("No modules specified for the project")
-    # Rename any modules whose ids would break the codegen
-    modules = remap_unsafe_module_ids(modules)
+    modules = index_by_id(all_firmware)
     # Synthesize the module and module type dicts
     modules = synthesize_firmware_module_info(modules, module_types)
     # Update the module inputs and outputs using the categories
@@ -285,37 +278,6 @@ def run_module(
         # Run the project
         ctx.invoke(run, **kwargs)
 
-# C++ keywords list
-CPP_KEYWORDS = [
-    "alignas", "alignof", "and", "and_eq", "asm", "atomic_cancel",
-    "atomic_commit", "atomic_noexcept", "auto", "bitand", "bitor", "bool",
-    "break", "case", "catch", "char", "char16_t", "char32_t", "class",
-    "compl", "concept", "const", "constexpr", "const_cast", "continue",
-    "decltype", "default", "delete", "do", "double", "dynamic_cast",
-    "else", "enum", "explicit", "export", "extern", "false", "float",
-    "for", "friend", "goto", "if", "inline", "int", "long", "mutable",
-    "namespace", "new", "noexcept", "not", "not_eq", "nullptr", "operator",
-    "or", "or_eq", "private", "protected", "public", "register",
-    "reinterpret_cast", "requires", "return short", "signed", "sizeof",
-    "static", "static_assert", "static_cast", "struct", "switch",
-    "synchronized", "template", "this", "thread_local", "throw", "true",
-    "try", "typedef", "typeid", "typename", "union", "unsigned", "using",
-    "virtual", "void", "volatile", "wchar_t", "while", "xor", "xor_eq"
-]
-
-def make_safe_module_id(_id):
-    """
-    Given an ID, return a new ID that is safe for codegen.
-    If ID is already safe, will leave it alone.
-    """
-    return "_" + _id if _id in CPP_KEYWORDS or _id[0].isdigit() else _id
-
-def remap_unsafe_module_ids(modules):
-    """
-    Remap module IDs so they are safe for codegen.
-    """
-    return {make_safe_module_id(_id): module for _id, module in modules.items()}
-
 def prune_unspecified_categories(modules, categories):
     """
     Removes unspecified module categories.
@@ -366,7 +328,7 @@ def load_plugin(plugin_name):
     return plugin_cls
 
 
-def load_module_types_from_lib(lib_path):
+def load_firmware_types_from_lib(lib_path):
     """
     Given a lib_path, generates a list of firmware module types by looking for
     module.json files in a lib directory.
@@ -388,7 +350,7 @@ def load_module_types_from_lib(lib_path):
                 yield firmware_type
 
 
-def load_module_types_from_db(server):
+def load_firmware_types_from_db(server):
     """Given a Couch database server instance, generate firmware type docs."""
     db = server[FIRMWARE_MODULE_TYPE]
     for _id in db:
@@ -401,10 +363,32 @@ def load_module_types_from_db(server):
         yield firmware_type
 
 
-def read_module_types(index):
+def read_firmware_types(index):
     """Read module type docs from an index. Returns generator."""
     for doc in index[FIRMWARE_MODULE_TYPE]:
         yield FirmwareModuleType(doc)
+
+
+def load_firmware_from_db(server):
+    """Given a reference to a server instance, generate modules."""
+    db = server[FIRMWARE_MODULE]
+    for _id in db:
+        if _id.startswith("_"):
+            continue
+        click.echo("Parsing firmware module \"{}\"".format(_id))
+        module = FirmwareModule(db[_id])
+        yield module
+
+
+def load_firmware_json(modules_file):
+    modules = json.load(modules_file)
+    for _id, doc in modules.items():
+        click.echo(
+            "Parsing firmware module \"{}\" from modules file".format(_id)
+        )
+        # Assign _id to doc using key
+        doc["_id"] = _id
+        yield FirmwareModule(doc)
 
 
 def index_by_id(docs):
