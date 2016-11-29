@@ -114,8 +114,14 @@ def run(
     firmware_types = []
     firmware = []
 
+    # Get any firmware types from DB
+    local_server = config["local_server"]["url"]
     # Get firmware and firmware_types from fixture file (if passed)
     if fixture_file:
+        click.echo(
+            "Parsing firmware modules and types from {}"
+            .format(fixture_file.name)
+        )
         fixture = json.load(fixture_file)
         firmware_types.extend(
             FirmwareModuleType(firmware_type)
@@ -125,10 +131,7 @@ def run(
             FirmwareModule(firmware)
             for firmware in fixture[FIRMWARE_MODULE]
         )
-
-    # Get any firmware types from DB
-    local_server = config["local_server"]["url"]
-    if local_server:
+    elif local_server:
         server = Server(local_server)
         firmware_types.extend(load_firmware_types_from_db(server))
         firmware.extend(load_firmware_from_db(server))
