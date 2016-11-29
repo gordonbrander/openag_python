@@ -118,18 +118,18 @@ def run(
     # Check for working modules in the lib folder
     # Do this second so project-local values overwrite values from the server
     lib_path = os.path.join(project_dir, "lib")
-    firmware_types_lib = (load_firmware_types_from_lib(lib_path))
+    firmware_types_lib = (load_firmware_types_from_module_json(lib_path))
     # Chain module type generators and then index by _id to create a dictionary
     # of module types.
     module_types = index_by_id(chain(firmware_types_db, firmware_types_lib))
 
     # Get the list of modules from DB, capturing generator
     firmware_db = (load_firmware_from_db(server)) if server else ()
-    firmware_json = (
-        load_firmware_json(modules_file) if modules_file else ()
+    firmware_module_json = (
+        load_firmware_from_module_json(modules_file) if modules_file else ()
     )
     # Chain and collect generators so we can measure length of list
-    all_firmware = list(chain(firmware_db, firmware_json))
+    all_firmware = list(chain(firmware_db, firmware_module_json))
     if len(all_firmware) is 0:
         raise click.ClickException("No modules specified for the project")
     modules = index_by_id(all_firmware)
@@ -328,7 +328,7 @@ def load_plugin(plugin_name):
     return plugin_cls
 
 
-def load_firmware_types_from_lib(lib_path):
+def load_firmware_types_from_module_json(lib_path):
     """
     Given a lib_path, generates a list of firmware module types by looking for
     module.json files in a lib directory.
@@ -363,12 +363,6 @@ def load_firmware_types_from_db(server):
         yield firmware_type
 
 
-def read_firmware_types(index):
-    """Read module type docs from an index. Returns generator."""
-    for doc in index[FIRMWARE_MODULE_TYPE]:
-        yield FirmwareModuleType(doc)
-
-
 def load_firmware_from_db(server):
     """Given a reference to a server instance, generate modules."""
     db = server[FIRMWARE_MODULE]
@@ -380,7 +374,7 @@ def load_firmware_from_db(server):
         yield module
 
 
-def load_firmware_json(modules_file):
+def load_firmware_from_module_json(modules_file):
     modules = json.load(modules_file)
     for _id, doc in modules.items():
         click.echo(
