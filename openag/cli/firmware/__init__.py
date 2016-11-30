@@ -42,14 +42,9 @@ def codegen_options(f):
         "be enabled"
     )(f)
     f = click.option(
-        "-f", "--fixture_file", type=click.File(),
-        help="JSON file describing modules and module types"
-        "code"
-    )(f)
-    f = click.option(
-        "-m", "--modules_file", type=click.File(),
+        "-f", "--modules_file", type=click.File(),
         help="JSON file describing the modules to include in the generated "
-        "code. Used for troubleshooting and debugging."
+        "code."
     )(f)
     f = click.option(
         "-p", "--plugin", multiple=True, help="Enable a specific plugin"
@@ -97,7 +92,7 @@ def init(board, project_dir, **kwargs):
 @project_dir_option
 @codegen_options
 def run(
-    categories, fixture_file, modules_file, project_dir, plugin, target,
+    categories, modules_file, project_dir, plugin, target,
     status_update_interval
 ):
     """ Generate code for this project and run it """
@@ -116,32 +111,30 @@ def run(
 
     # Get any firmware types from DB
     local_server = config["local_server"]["url"]
-    # Get firmware and firmware_types from fixture file (if passed)
-    if fixture_file:
-        click.echo(
-            "Parsing firmware modules and types from {}"
-            .format(fixture_file.name)
-        )
-        fixture = json.load(fixture_file)
-        firmware_types.extend(
-            FirmwareModuleType(firmware_type)
-            for firmware_type in fixture[FIRMWARE_MODULE_TYPE]
-        )
-        firmware.extend(
-            FirmwareModule(firmware)
-            for firmware in fixture[FIRMWARE_MODULE]
-        )
-    elif local_server:
+    if local_server:
         server = Server(local_server)
         firmware_types.extend(load_firmware_types_from_db(server))
         firmware.extend(load_firmware_from_db(server))
 
+    # Get firmware and firmware_types from modules file (if passed)
+    if modules_file:
+        click.echo(
+            "Parsing firmware modules and types from {}"
+            .format(modules_file.name)
+        )
+        modules = json.load(modules_file)
+        firmware_types.extend(
+            FirmwareModuleType(firmware_type)
+            for firmware_type in modules[FIRMWARE_MODULE_TYPE]
+        )
+        firmware.extend(
+            FirmwareModule(firmware)
+            for firmware in modules[FIRMWARE_MODULE]
+        )
     # Check for working modules in the lib folder
     # Do this last so project-local values overwrite values from the server
     lib_path = os.path.join(project_dir, "lib")
-    firmware_types.extend(load_firmware_types_from_module_json(lib_path))
-    if modules_file:
-        firmware.extend(load_firmware_from_module_json(modules_file))
+    firmware_types.extend(load_firmware_types_from_lib(lib_path))
 
     # Check if any modules were specified. We need at least one.
     if len(firmware) is 0:
@@ -287,10 +280,13 @@ def run_module(
 
     # Write the modules.json file
     modules = {
-        "module": FirmwareModule({
-            "type": "module",
-            "arguments": list(real_args)
-        })
+        FIRMWARE_MODULE: [
+            FirmwareModule({
+                "_id": "module_1",
+                "type": "module",
+                "arguments": list(real_args)
+            })
+        ]
     }
     modules_file = os.path.join(build_path, "modules.json")
     with open(modules_file, "w") as f:
@@ -350,7 +346,7 @@ def load_plugin(plugin_name):
     return plugin_cls
 
 
-def load_firmware_types_from_module_json(lib_path):
+def load_firmware_types_from_lib(lib_path):
     """
     Given a lib_path, generates a list of firmware module types by looking for
     module.json files in a lib directory.
@@ -394,17 +390,6 @@ def load_firmware_from_db(server):
         click.echo("Parsing firmware module \"{}\"".format(_id))
         module = FirmwareModule(db[_id])
         yield module
-
-
-def load_firmware_from_module_json(modules_file):
-    modules = json.load(modules_file)
-    for _id, doc in modules.items():
-        click.echo(
-            "Parsing firmware module \"{}\" from modules file".format(_id)
-        )
-        # Assign _id to doc using key
-        doc["_id"] = _id
-        yield FirmwareModule(doc)
 
 
 def index_by_id(docs):
