@@ -4,7 +4,7 @@ __all__ = [
 ]
 
 from .categories import SENSORS, ACTUATORS, CALIBRATION
-from voluptuous import Schema, Required, Any, Extra, REMOVE_EXTRA
+from voluptuous import Schema, Required, Any, Extra, Optional, REMOVE_EXTRA
 
 # C++ keywords list
 CPP_KEYWORDS = [
@@ -267,7 +267,8 @@ PioRepo = Schema({
 })
 GitRepo = Schema({
     Required("type"): "git",
-    Required("url"): Any(str, unicode)
+    Required("url"): Any(str, unicode),
+    Optional("branch"): Any(str, unicode)
 })
 
 FirmwareModuleType = Schema({
