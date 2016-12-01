@@ -111,11 +111,6 @@ def run(
 
     # Get any firmware types from DB
     local_server = config["local_server"]["url"]
-    if local_server:
-        server = Server(local_server)
-        firmware_types.extend(load_firmware_types_from_db(server))
-        firmware.extend(load_firmware_from_db(server))
-
     # Get firmware and firmware_types from modules file (if passed)
     if modules_file:
         click.echo(
@@ -133,14 +128,17 @@ def run(
                 FirmwareModule(firmware)
                 for firmware in modules[FIRMWARE_MODULE]
             )
+    elif local_server:
+        server = Server(local_server)
+        firmware_types.extend(load_firmware_types_from_db(server))
+        firmware.extend(load_firmware_from_db(server))
+    # Check if any modules were specified. We need at least one.
+    else:
+        raise click.ClickException("No modules specified for the project")
     # Check for working modules in the lib folder
     # Do this last so project-local values overwrite values from the server
     lib_path = os.path.join(project_dir, "lib")
     firmware_types.extend(load_firmware_types_from_lib(lib_path))
-
-    # Check if any modules were specified. We need at least one.
-    if len(firmware) is 0:
-        raise click.ClickException("No modules specified for the project")
 
     module_types = index_by_id(firmware_types)
     modules = index_by_id(firmware)
