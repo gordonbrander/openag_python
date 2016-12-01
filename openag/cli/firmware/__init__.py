@@ -123,14 +123,16 @@ def run(
             .format(modules_file.name)
         )
         modules = json.load(modules_file)
-        firmware_types.extend(
-            FirmwareModuleType(firmware_type)
-            for firmware_type in modules[FIRMWARE_MODULE_TYPE]
-        )
-        firmware.extend(
-            FirmwareModule(firmware)
-            for firmware in modules[FIRMWARE_MODULE]
-        )
+        if modules.get(FIRMWARE_MODULE_TYPE):
+            firmware_types.extend(
+                FirmwareModuleType(firmware_type)
+                for firmware_type in modules[FIRMWARE_MODULE_TYPE]
+            )
+        if modules.get(FIRMWARE_MODULE):
+            firmware.extend(
+                FirmwareModule(firmware)
+                for firmware in modules[FIRMWARE_MODULE]
+            )
     # Check for working modules in the lib folder
     # Do this last so project-local values overwrite values from the server
     lib_path = os.path.join(project_dir, "lib")
