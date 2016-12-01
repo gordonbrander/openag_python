@@ -225,8 +225,7 @@ def run_module(
     here = os.path.abspath(project_dir)
     module_json_path = os.path.join(here, "module.json")
     try:
-        with open(module_json_path) as f:
-            module_type = FirmwareModuleType(json.load(f))
+        module_type = load_firmware_module_type_file(module_json_path)
     except IOError:
         raise click.ClickException("No module.json file found")
 
@@ -347,6 +346,14 @@ def load_plugin(plugin_name):
             )
     return plugin_cls
 
+def load_firmware_module_type_file(module_file_path):
+    f = open(module_file_path)
+    doc = json.load(f)
+    if not doc.get("_id"):
+        # Derive id from dirname if id isn't present
+        dir_name = os.path.basename(os.path.dirname(module_file_path))
+        doc["_id"] = dir_name
+    return FirmwareModuleType(doc)
 
 def load_firmware_types_from_lib(lib_path):
     """
@@ -359,16 +366,11 @@ def load_firmware_types_from_lib(lib_path):
             continue
         config_path = os.path.join(dir_path, "module.json")
         if os.path.isfile(config_path):
-            with open(config_path) as f:
-                click.echo(
-                    "Parsing firmware module type \"{}\" from lib "
-                    "folder".format(dir_name)
-                )
-                doc = json.load(f)
-                doc["_id"] = dir_name
-                firmware_type = FirmwareModuleType(doc)
-                yield firmware_type
-
+            click.echo(
+                "Parsing firmware module type \"{}\" from lib "
+                "folder".format(dir_name)
+            )
+            yield load_firmware_module_type_file(config_path)
 
 def load_firmware_types_from_db(server):
     """Given a Couch database server instance, generate firmware type docs."""
