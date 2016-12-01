@@ -3,7 +3,6 @@ import sys
 import json
 import click
 import subprocess
-from itertools import chain
 from importlib import import_module
 from voluptuous import Invalid
 from ConfigParser import ConfigParser
@@ -12,7 +11,12 @@ from base import CodeGen
 from plugins import plugin_map
 from ..config import config
 from openag.couch import Server
-from openag.utils import synthesize_firmware_module_info, make_dir_name_from_url
+from openag.utils import (
+    synthesize_firmware_module_info, make_dir_name_from_url,
+    load_firmware_module_type_file, load_firmware_types_from_lib,
+    load_firmware_types_from_db, load_firmware_from_db,
+    index_by_id
+)
 from openag.models import FirmwareModuleType, FirmwareModule
 from openag.db_names import FIRMWARE_MODULE_TYPE, FIRMWARE_MODULE
 from openag.categories import all_categories, SENSORS, ACTUATORS, CALIBRATION
@@ -344,57 +348,3 @@ def load_plugin(plugin_name):
             )
     return plugin_cls
 
-def load_firmware_module_type_file(module_file_path):
-    f = open(module_file_path)
-    doc = json.load(f)
-    if not doc.get("_id"):
-        # Derive id from dirname if id isn't present
-        dir_name = os.path.basename(os.path.dirname(module_file_path))
-        doc["_id"] = dir_name
-    return FirmwareModuleType(doc)
-
-def load_firmware_types_from_lib(lib_path):
-    """
-    Given a lib_path, generates a list of firmware module types by looking for
-    module.json files in a lib directory.
-    """
-    for dir_name in os.listdir(lib_path):
-        dir_path = os.path.join(lib_path, dir_name)
-        if not os.path.isdir(dir_path):
-            continue
-        config_path = os.path.join(dir_path, "module.json")
-        if os.path.isfile(config_path):
-            click.echo(
-                "Parsing firmware module type \"{}\" from lib "
-                "folder".format(dir_name)
-            )
-            yield load_firmware_module_type_file(config_path)
-
-def load_firmware_types_from_db(server):
-    """Given a Couch database server instance, generate firmware type docs."""
-    db = server[FIRMWARE_MODULE_TYPE]
-    for _id in db:
-        # Skip design documents
-        if _id.startswith("_"):
-            continue
-        click.echo("Parsing firmware module type \"{}\" from DB".format(_id))
-        doc = db[_id]
-        firmware_type = FirmwareModuleType(doc)
-        yield firmware_type
-
-
-def load_firmware_from_db(server):
-    """Given a reference to a server instance, generate modules."""
-    db = server[FIRMWARE_MODULE]
-    for _id in db:
-        if _id.startswith("_"):
-            continue
-        click.echo("Parsing firmware module \"{}\"".format(_id))
-        module = FirmwareModule(db[_id])
-        yield module
-
-
-def index_by_id(docs):
-    """Index a list of docs using `_id` field.
-    Returns a dictionary keyed by _id."""
-    return {doc["_id"]: doc for doc in docs}
