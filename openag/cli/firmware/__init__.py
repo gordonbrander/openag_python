@@ -3,7 +3,6 @@ import sys
 import json
 import click
 import subprocess
-from itertools import chain
 from importlib import import_module
 from voluptuous import Invalid
 from ConfigParser import ConfigParser
@@ -111,11 +110,6 @@ def run(
 
     # Get any firmware types from DB
     local_server = config["local_server"]["url"]
-    if local_server:
-        server = Server(local_server)
-        firmware_types.extend(load_firmware_types_from_db(server))
-        firmware.extend(load_firmware_from_db(server))
-
     # Get firmware and firmware_types from modules file (if passed)
     if modules_file:
         click.echo(
@@ -133,14 +127,17 @@ def run(
                 FirmwareModule(firmware)
                 for firmware in modules[FIRMWARE_MODULE]
             )
+    elif local_server:
+        server = Server(local_server)
+        firmware_types.extend(load_firmware_types_from_db(server))
+        firmware.extend(load_firmware_from_db(server))
+    else:
+        raise click.ClickException("No modules specified for the project")
+
     # Check for working modules in the lib folder
     # Do this last so project-local values overwrite values from the server
     lib_path = os.path.join(project_dir, "lib")
     firmware_types.extend(load_firmware_types_from_lib(lib_path))
-
-    # Check if any modules were specified. We need at least one.
-    if len(firmware) is 0:
-        raise click.ClickException("No modules specified for the project")
 
     module_types = index_by_id(firmware_types)
     modules = index_by_id(firmware)
@@ -225,7 +222,8 @@ def run_module(
     here = os.path.abspath(project_dir)
     module_json_path = os.path.join(here, "module.json")
     try:
-        module_type = load_firmware_module_type_file(module_json_path)
+        with open(module_json_path) as f:
+            module_type = FirmwareModuleType(json.load(f))
     except IOError:
         raise click.ClickException("No module.json file found")
 
@@ -346,14 +344,7 @@ def load_plugin(plugin_name):
             )
     return plugin_cls
 
-def load_firmware_module_type_file(module_file_path):
-    f = open(module_file_path)
-    doc = json.load(f)
-    if not doc.get("_id"):
-        # Derive id from dirname if id isn't present
-        dir_name = os.path.basename(os.path.dirname(module_file_path))
-        doc["_id"] = dir_name
-    return FirmwareModuleType(doc)
+def load_firmware_type(module.json)
 
 def load_firmware_types_from_lib(lib_path):
     """
@@ -366,11 +357,16 @@ def load_firmware_types_from_lib(lib_path):
             continue
         config_path = os.path.join(dir_path, "module.json")
         if os.path.isfile(config_path):
-            click.echo(
-                "Parsing firmware module type \"{}\" from lib "
-                "folder".format(dir_name)
-            )
-            yield load_firmware_module_type_file(config_path)
+            with open(config_path) as f:
+                click.echo(
+                    "Parsing firmware module type \"{}\" from lib "
+                    "folder".format(dir_name)
+                )
+                doc = json.load(f)
+                doc["_id"] = dir_name
+                firmware_type = FirmwareModuleType(doc)
+                yield firmware_type
+
 
 def load_firmware_types_from_db(server):
     """Given a Couch database server instance, generate firmware type docs."""
