@@ -1,5 +1,6 @@
 from openag.utils import (
-    index_by_id, dedupe_by, make_dir_name_from_url
+    index_by_id, dedupe_by, make_dir_name_from_url, safe_cpp_var,
+    parent_dirname
 )
 
 EXAMPLE_DOCS = [
@@ -43,3 +44,12 @@ def test_make_dir_name_from_url():
     url_c = "http://foo.xyz/bar/"
     c = make_dir_name_from_url(url_c)
     assert c is "bar"
+
+def test_safe_cpp_var():
+    safe_var = safe_cpp_var("for")
+    assert safe_var == "my_for"
+
+def test_parent_dirname():
+    assert parent_dirname("foo/bar.git") == "foo"
+    assert parent_dirname("foo/bar/baz") == "bar"
+    assert parent_dirname("foo/bar/baz/") == "baz"

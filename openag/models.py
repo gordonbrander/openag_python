@@ -5,32 +5,7 @@ __all__ = [
 
 from .categories import SENSORS, ACTUATORS, CALIBRATION
 from voluptuous import Schema, Required, Any, Extra, Optional, REMOVE_EXTRA
-
-# C++ keywords list
-CPP_KEYWORDS = [
-    "alignas", "alignof", "and", "and_eq", "asm", "atomic_cancel",
-    "atomic_commit", "atomic_noexcept", "auto", "bitand", "bitor", "bool",
-    "break", "case", "catch", "char", "char16_t", "char32_t", "class",
-    "compl", "concept", "const", "constexpr", "const_cast", "continue",
-    "decltype", "default", "delete", "do", "double", "dynamic_cast",
-    "else", "enum", "explicit", "export", "extern", "false", "float",
-    "for", "friend", "goto", "if", "inline", "int", "long", "mutable",
-    "namespace", "new", "noexcept", "not", "not_eq", "nullptr", "operator",
-    "or", "or_eq", "private", "protected", "public", "register",
-    "reinterpret_cast", "requires", "return short", "signed", "sizeof",
-    "static", "static_assert", "static_cast", "struct", "switch",
-    "synchronized", "template", "this", "thread_local", "throw", "true",
-    "try", "typedef", "typeid", "typename", "union", "unsigned", "using",
-    "virtual", "void", "volatile", "wchar_t", "while", "xor", "xor_eq"
-]
-
-def safe_cpp_var(_id):
-    """
-    Given a string representing a variable, return a new string that is safe
-    for C++ codegen. If string is already safe, will leave it alone.
-    """
-    _id = str(_id)
-    return "_" + _id if _id in CPP_KEYWORDS or _id[0].isdigit() else _id
+from openag.utils import safe_cpp_var
 
 Environment = Schema({
     "name": Any(str, unicode),

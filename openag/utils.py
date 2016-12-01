@@ -1,10 +1,9 @@
 import os
 import json
 import click
+import re
 from urlparse import urlparse
 from openag.categories import SENSORS, ACTUATORS
-from openag.db_names import FIRMWARE_MODULE_TYPE, FIRMWARE_MODULE
-from openag.models import FirmwareModuleType, FirmwareModule
 
 def synthesize_firmware_module_info(modules, module_types):
     """
@@ -96,6 +95,9 @@ def dedupe_by(things, key=None):
     index = {key(thing): thing for thing in things}
     return index.values()
 
+def parent_dirname(file_path):
+    return os.path.basename(os.path.dirname(file_path))
+
 def make_dir_name_from_url(url):
     """This function attempts to emulate something like Git's "humanish"
     directory naming for clone. It's probably not a perfect facimile,
@@ -110,50 +112,34 @@ def make_dir_name_from_url(url):
     dir_name, ext = os.path.splitext(tail)
     return dir_name
 
-def load_firmware_module_type_file(module_file_path):
-    f = open(module_file_path)
-    doc = json.load(f)
-    if not doc.get("_id"):
-        # Derive id from dirname if id isn't present
-        dir_name = os.path.basename(os.path.dirname(module_file_path))
-        doc["_id"] = dir_name
-    return FirmwareModuleType(doc)
+# C++ keywords list
+CPP_KEYWORDS = [
+    "alignas", "alignof", "and", "and_eq", "asm", "atomic_cancel",
+    "atomic_commit", "atomic_noexcept", "auto", "bitand", "bitor", "bool",
+    "break", "case", "catch", "char", "char16_t", "char32_t", "class",
+    "compl", "concept", "const", "constexpr", "const_cast", "continue",
+    "decltype", "default", "delete", "do", "double", "dynamic_cast",
+    "else", "enum", "explicit", "export", "extern", "false", "float",
+    "for", "friend", "goto", "if", "inline", "int", "long", "mutable",
+    "namespace", "new", "noexcept", "not", "not_eq", "nullptr", "operator",
+    "or", "or_eq", "private", "protected", "public", "register",
+    "reinterpret_cast", "requires", "return short", "signed", "sizeof",
+    "static", "static_assert", "static_cast", "struct", "switch",
+    "synchronized", "template", "this", "thread_local", "throw", "true",
+    "try", "typedef", "typeid", "typename", "union", "unsigned", "using",
+    "virtual", "void", "volatile", "wchar_t", "while", "xor", "xor_eq"
+]
 
-def load_firmware_types_from_lib(lib_path):
+def safe_cpp_var(s):
     """
-    Given a lib_path, generates a list of firmware module types by looking for
-    module.json files in a lib directory.
+    Given a string representing a variable, return a new string that is safe
+    for C++ codegen. If string is already safe, will leave it alone.
     """
-    for dir_name in os.listdir(lib_path):
-        dir_path = os.path.join(lib_path, dir_name)
-        if not os.path.isdir(dir_path):
-            continue
-        config_path = os.path.join(dir_path, "module.json")
-        if os.path.isfile(config_path):
-            click.echo(
-                "Parsing firmware module type \"{}\" from lib "
-                "folder".format(dir_name)
-            )
-            yield load_firmware_module_type_file(config_path)
-
-def load_firmware_types_from_db(server):
-    """Given a Couch database server instance, generate firmware type docs."""
-    db = server[FIRMWARE_MODULE_TYPE]
-    for _id in db:
-        # Skip design documents
-        if _id.startswith("_"):
-            continue
-        click.echo("Parsing firmware module type \"{}\" from DB".format(_id))
-        doc = db[_id]
-        firmware_type = FirmwareModuleType(doc)
-        yield firmware_type
-
-def load_firmware_from_db(server):
-    """Given a reference to a server instance, generate modules."""
-    db = server[FIRMWARE_MODULE]
-    for _id in db:
-        if _id.startswith("_"):
-            continue
-        click.echo("Parsing firmware module \"{}\"".format(_id))
-        module = FirmwareModule(db[_id])
-        yield module
+    s = str(s)
+    # Remove non-word, non-space characters
+    s = re.sub(r"[^\w\s]", '', s)
+    # Replace spaces with _
+    s = re.sub(r"\s+", '_', s)
+    # Prefix with underscore if what is left is a reserved word
+    s = "_" + s if s in CPP_KEYWORDS or s[0].isdigit() else s
+    return s

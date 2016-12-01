@@ -12,10 +12,8 @@ from plugins import plugin_map
 from ..config import config
 from openag.couch import Server
 from openag.utils import (
-    synthesize_firmware_module_info, make_dir_name_from_url,
-    load_firmware_module_type_file, load_firmware_types_from_lib,
-    load_firmware_types_from_db, load_firmware_from_db,
-    index_by_id
+    synthesize_firmware_module_info, make_dir_name_from_url, index_by_id,
+    parent_dirname
 )
 from openag.models import FirmwareModuleType, FirmwareModule
 from openag.db_names import FIRMWARE_MODULE_TYPE, FIRMWARE_MODULE
@@ -48,7 +46,7 @@ def codegen_options(f):
     f = click.option(
         "-f", "--modules_file", type=click.File(),
         help="JSON file describing the modules to include in the generated "
-        "code."
+        "code"
     )(f)
     f = click.option(
         "-p", "--plugin", multiple=True, help="Enable a specific plugin"
@@ -113,36 +111,66 @@ def run(
     firmware_types = []
     firmware = []
 
-    # Get any firmware types from DB
     local_server = config["local_server"]["url"]
+    server = Server(local_server) if local_server else None
+    modules_json = json.load(modules_file) if modules_file else {}
+
     # Get firmware and firmware_types from modules file (if passed)
-    if modules_file:
+    if modules_json.get(FIRMWARE_MODULE_TYPE):
         click.echo(
-            "Parsing firmware modules and types from {}"
-            .format(modules_file.name)
+            "Parsing firmware module types from {}".format(modules_file.name)
         )
-        modules = json.load(modules_file)
-        if modules.get(FIRMWARE_MODULE_TYPE):
-            firmware_types.extend(
-                FirmwareModuleType(firmware_type)
-                for firmware_type in modules[FIRMWARE_MODULE_TYPE]
-            )
-        if modules.get(FIRMWARE_MODULE):
-            firmware.extend(
-                FirmwareModule(firmware)
-                for firmware in modules[FIRMWARE_MODULE]
-            )
-    elif local_server:
-        server = Server(local_server)
-        firmware_types.extend(load_firmware_types_from_db(server))
-        firmware.extend(load_firmware_from_db(server))
-    # Check if any modules were specified. We need at least one.
+        firmware_types.extend(
+            FirmwareModuleType(module)
+            for module in modules_json[FIRMWARE_MODULE_TYPE]
+        )
+    elif server:
+        click.echo("Parsing firmware module types from DB")
+        module_type_db = server[FIRMWARE_MODULE_TYPE]
+        firmware_types.extend(
+            FirmwareModuleType(module_type_db[_id])
+            for _id in module_type_db:
+            if not _id.startswith("_")
+        )
+
+    # Check for working modules in the lib folder
+    # Do this second so project-local values overwrite values from the server
+    lib_path = os.path.join(project_dir, "lib")
+    for dir_name in os.listdir(lib_path):
+        dir_path = os.path.join(lib_path, dir_name)
+        if not os.path.isdir(dir_path):
+            continue
+        config_path = os.path.join(dir_path, "module.json")
+        if os.path.isfile(config_path):
+            with open(config_path) as f:
+                click.echo(
+                    "Parsing firmware module type \"{}\" from lib "
+                    "folder".format(dir_name)
+                )
+                doc = json.load(f)
+                if not doc.get("_id"):
+                    # Patch in id if id isn't present
+                    doc["_id"] = parent_dirname(module_file_path)
+                firwmare_types.append(FirmwareModuleType(doc))
+
+    if modules_json.get(FIRMWARE_MODULE):
+        click.echo(
+            "Parsing firmware modules from {}".format(modules_file.name)
+        )
+        firmware.extend(
+            FirmwareModule(module)
+            for module in modules[FIRMWARE_MODULE]
+        )
+    elif server:
+        click.echo("Parsing firmware modules from DB")
+        module_db = server[FIRMWARE_MODULE]
+        firmware.extend(
+            FirmwareModule(module_db[_id])
+            for _id in module_db
+            if not _id.startswith("_")
+        )
     else:
         raise click.ClickException("No modules specified for the project")
-    # Check for working modules in the lib folder
-    # Do this last so project-local values overwrite values from the server
-    lib_path = os.path.join(project_dir, "lib")
-    firmware_types.extend(load_firmware_types_from_lib(lib_path))
 
     module_types = index_by_id(firmware_types)
     modules = index_by_id(firmware)
@@ -227,7 +255,12 @@ def run_module(
     here = os.path.abspath(project_dir)
     module_json_path = os.path.join(here, "module.json")
     try:
-        module_type = load_firmware_module_type_file(module_json_path)
+        with open(module_json_path) as f:
+            doc = json.load(f)
+            if not doc.get("_id"):
+                # Patch in id if not present
+                doc["_id"] = parent_dirname(module_json_path)
+            module_type = FirmwareModuleType(doc)
     except IOError:
         raise click.ClickException("No module.json file found")
 
@@ -347,4 +380,3 @@ def load_plugin(plugin_name):
                 )
             )
     return plugin_cls
-
